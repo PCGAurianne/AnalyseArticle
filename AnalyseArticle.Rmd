@@ -1,0 +1,76 @@
+---
+title: "Analyse d'article - 16S rRNA Gene Metabarcoding Indicates Species-Characteristic Micrbiomes in Deep-sea Benthic Foraminifera."
+output: git_document
+---
+
+```{r}
+Seqs<-"/home/rstudio/AnalyseArticle/Reads"
+data<-read.table(file="/home/rstudio/AnalyseArticle/DataTXT.txt", header=TRUE, sep=",")
+```
+
+
+# Séparer les séquences Forward et Reverse.
+```{r}
+SeqF<-sort(list.files(Seqs, pattern="_1.fastq.gz", full.names =TRUE))
+SeqR<-sort(list.files(Seqs, pattern="_2.fastq.gz", full.names =TRUE))
+sample.names<-sapply(strsplit(basename(SeqF),"_"),'[',1)
+sample.names
+```
+
+# Plots de qualité des séquences.
+```{r}
+plotQualityProfile(SeqF[1:2])
+```
+```{r}
+plotQualityProfile(SeqR[1:2])
+```
+
+```{r}
+SeqfF<-file.path(Seqs,"Filtered",paste0(sample.names,"_filtF.fastq.gz"))
+SeqfR<-file.path(Seqs,"Filtered",paste0(sample.names,"_filtR.fastq.gz"))
+Seqsfilt<-filterAndTrim(SeqF, SeqfF, SeqR, SeqfR, truncLen=c(285,255), trimLeft=c(10,10), maxN=0, maxEE=c(2,2), truncQ=2,rm.phix=TRUE, compress=TRUE, multithread=TRUE)
+head(Seqsfilt)
+```
+
+```{r}
+errF<-learnErrors(SeqfF, multithread=TRUE)
+errR<-learnErrors(SeqfR, multithread=TRUE)
+```
+
+```{r}
+dadaFs<-dada(SeqfF, err=errF, multithread=TRUE)
+dadaRs<-dada(SeqfR, err=errR, multithread=TRUE)
+```
+
+# Fusion des séquences.
+```{r}
+Fus<-mergePairs(dadaFs,SeqfF,dadaRs,SeqfR, verbose=TRUE)
+```
+
+# Création de la table de séquences.
+```{r}
+seqtab<-makeSequenceTable(Fus)
+dim(seqtab)
+table(nchar(getSequences(seqtab)))
+```
+
+# Suppression des chimères.
+```{r}
+seqtab.nc<-removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE,verbose=TRUE)
+dim(seqtab.nc)
+sum(seqtab.nc/seqtab)
+```
+
+#Résumé du nombre de séquences éliminées par chaque étape.
+```{r}
+getN<-function(x) sum(getUniques(x))
+Resume<-cbind(Seqsfilt, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(Fus, getN),rownums(seqtab.nc))
+colnames(Resume)<-c("input","filtered","errlF","errlR","fusion","nochim")
+rownames(Resume)<-sample.names
+head(Resume)
+```
+
+```{r}
+assignement de taxonomie
+```
+
