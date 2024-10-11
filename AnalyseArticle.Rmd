@@ -36,7 +36,7 @@ head(Seqsfilt)
 errF<-learnErrors(SeqfF, multithread=TRUE)
 errR<-learnErrors(SeqfR, multithread=TRUE)
 ```
-
+  
 ```{r}
 dadaFs<-dada(SeqfF, err=errF, multithread=TRUE)
 dadaRs<-dada(SeqfR, err=errR, multithread=TRUE)
