@@ -1,6 +1,6 @@
 ---
-title: "Analyse d'article - 16S rRNA Gene Metabarcoding Indicates Species-Characteristic Micrbiomes in Deep-sea Benthic Foraminifera."
-output: git_document
+title: "Analyse d'article - 16S rRNA Gene Metabarcoding Indicates Species-Characteristic Micrbiomes in Deep-sea Benthic Foraminifera. Aurianne PRECIGOUT M1 MFA"
+output: pdf_document
 ---
 
 ```{r}
@@ -9,7 +9,7 @@ data<-read.table(file="/home/rstudio/AnalyseArticle/DataTXT.txt", header=TRUE, s
 ```
 
 
-# Séparer les séquences Forward et Reverse.
+# Séparation des séquences Forward et Reverse.
 ```{r}
 SeqF<-sort(list.files(Seqs, pattern="_1.fastq.gz", full.names =TRUE))
 SeqR<-sort(list.files(Seqs, pattern="_2.fastq.gz", full.names =TRUE))
@@ -24,6 +24,11 @@ plotQualityProfile(SeqF[1:2])
 ```{r}
 plotQualityProfile(SeqR[1:2])
 ```
+
+
+# Filtration des séquences.
+
+Sur les plots de qualité on voit qu'il est possible de garder les bases comprises entre 10 et 250. Ainsi au dela de la 250ème base cela permettra toujours d'aligner les séquences forward aux reverse.
 
 ```{r}
 SeqfF<-file.path(Seqs,"Filtered",paste0(sample.names,"_filtF.fastq.gz"))
@@ -62,7 +67,6 @@ sum(seqtab.nc)/sum(seqtab)
 ```
 
 #Résumé du nombre de séquences éliminées par chaque étape.
-
 ```{r}
 getN<-function(x) sum(getUniques(x))
 Resume<-cbind(Seqsfilt, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(Fus, getN),rowSums(seqtab.nc))
@@ -72,7 +76,6 @@ head(Resume)
 ```
 
 # Assignement de taxonomie
-
 ```{r}
 taxo<-assignTaxonomy(seqtab.nc,"/home/rstudio/AnalyseArticle/silva_nr_v132_train_set.fa.gz", multithread=TRUE)
 printTaxo<-taxo
@@ -80,15 +83,21 @@ rownames(printTaxo)<-NULL
 ```
 
 # Création de la table d'OTU
+Ici, la table d'OTU comprendra le numéro des échantillons, leur nom et leur site de prélèvement. Néanmoins, après avoir travailler sur ces données j'ai identifié dans le nom des échantillons que le "s" faisait référence aux échantillons de sédiment des sites SB et X, et le "f" aux foraminifères extrait de ces sites. Ainsi, la suite de ce travail comparera l'ensemble des échantillons des sites en non les foraminifères d'une part ou les sédiments de l'autre.
+
+Afin d'améliorer ce travail, il faudrait créer plusieurs tables d'OTU afin de pouvoir comparer les distances entre les communautés bactériennes des foraminifères et des 
+
 ```{r}
 table.samples <- rownames(seqtab.nc)
 
 subject <- sapply(strsplit(table.samples, "_"), `[`, 1)
 subject <- substr(subject,1,83)
-sample <-sapply(data$Sample.Name, `[`,)
-sample <- sample[!sapply(sample, is.)]
-sample
-df.samples <- data.frame(NumSeq=subject, Echantillon=sample)
+sample <-data$Sample.Name[grepl("SB", data$Sample.Name) | grepl("X", data$Sample.Name)]
+site <- sapply(strsplit(sample, "[sf]"), `[`, 1)
+echantillon <- sapply(strsplit(sample, "[12345]"), `[`, 2)
+echantillon <- str_extract(echantillon, "[sf]")
+
+df.samples <- data.frame(NumSeq=subject, Echantillon=sample, Site=site, TypeEch=echantillon)
 
 rownames(df.samples) <- table.samples
 df.samples
@@ -111,20 +120,64 @@ ps
 ```{r}
 ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
 ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
+
+ord.nmds.bray$stress
+```
+Pour ces deux graphiques j'ai d'abord analysé les distances par un graphique de NMDS basé sur la distance de Bray Curtis, avec une légère perte d'information dû à la réduction dimensionnelle (0.1 < stress < 0.2).
+Ainsi, on remarque que les site SB1 2 et 3 présente des communautés bactériennes proches dans leurs sédiments. Néanmoins, on distingue aussi grace à ce graphique que les communautés bactériennes des foraminifères des sites échantillonnés sont représentés en deux groupes. Les foraminifères du site SB1 semblent avoir une communauté semblable entre eux, mais différentes des communautés de foraminifères des autres site prélevés.
+
+Le nom des échantillons donnés par les scientifiques à l'origine de l'étude n'a pas permis d'identifier les espèces de foraminifère desquelles proviennent les séquences ARN 16S.
+```{r}
+plot_ordination(ps.prop, ord.nmds.bray, color="Site", shape= "TypeEch", title="Bray NMDS")
 ```
 
-```{r}
-plot_ordination(ps.prop, ord.nmds.bray, color="Phylum1", title="Bray NMDS")
-```
 
 ```{r}
-top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
-ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
-ps.top20 <- prune_taxa(top20, ps.top20)
-plot_bar(ps.top20, x="subject", fill="Class") + facet_wrap(~, scales="free_x")
+dist.bray <- phyloseq::distance(ps.prop, method = "bray")
+ord.pcoa <- ordinate(ps.prop, method = "PCoA", distance = dist.bray)
+
+plot_ordination(ps.prop, ord.pcoa, color = "Site", shape="TypeEch", title = "PCoA Bray-Curtis")
+```
+# Création d'un diagramme empilé des abondances relatives des classes bactériennes séquencées dans les prélèvements de sédiments du site SB1.
+```{r}
+SB1 <- df.samples[df.samples$Site == "SB1" | df.samples$TypeEch == "s", ]
+
+ps.sb <-phyloseq(otu_table(seqtab.nc, taxa_are_rows = FALSE),SB1, tax_table(taxo))
+
+dnaSB1 <- Biostrings::DNAStringSet(taxa_names(ps.sb))
+names(dnaSB1) <- taxa_names(ps.sb)
+ps.sb <- merge_phyloseq(ps.sb, dnaSB1)
+taxa_names(ps.sb) <- paste0("ASV", seq(ntaxa(ps.sb)))
+
+ps.sb.prop <- transform_sample_counts(ps.sb, function(otu) otu/sum(otu))
+
+ps.sb.prop
+
+otu_df <- as.data.frame(as.matrix(otu_table(ps.sb.prop2)))
+taxa_df <- as.data.frame(tax_table(ps.sb.prop2))
+
+classe <- taxa_df$Class
+
+otu_df_taxo <- t(otu_df)
+otu_df_taxo$Class <- classe
+otu_df_taxo <- as.data.frame(otu_df_taxo)
 ```
 
+Je n'ai pas pu lancer la suite des codes par manque de RAM de la VM. 
 ```{r}
-boxplot
+abundance_by_class <- otu_df_taxo %>%
+  group_by(Class) %>%
+  summarise(abundance = sum(.)) %>%
+  arrange(desc(abundance))
+
+
+abundance_by_class$relative_abundance <- abundance_by_class$abundance / sum(abundance_by_class$abundance)
+
+ggplot(abundance_by_class, aes(x = reorder(Class, -relative_abundance), y = relative_abundance, fill = Class)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(x = "Classe de Bactéries", y = "Abondance Relative") +
+  ggtitle("Abondance Relative des Classes de Bactéries - Site SB1") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
