@@ -1,5 +1,7 @@
 ---
 title: "Analyse d'article - 16S rRNA Gene Metabarcoding Indicates Species-Characteristic Micrbiomes in Deep-sea Benthic Foraminifera. Aurianne PRECIGOUT M1 MFA"
+author: "Aurianne PRECIGOUT"
+date: "`r Sys.Date()`"
 output: pdf_document
 ---
 
@@ -19,7 +21,7 @@ sample.names
 
 # Plots de qualité des séquences.
 ```{r}
-plotQualityProfile(SeqF[1:2])
+plotQualityProfile(SeqF[1:2]) 
 ```
 ```{r}
 plotQualityProfile(SeqR[1:2])
