@@ -36,7 +36,7 @@ head(Seqsfilt)
 errF<-learnErrors(SeqfF, multithread=TRUE)
 errR<-learnErrors(SeqfR, multithread=TRUE)
 ```
-  
+
 ```{r}
 dadaFs<-dada(SeqfF, err=errF, multithread=TRUE)
 dadaRs<-dada(SeqfR, err=errR, multithread=TRUE)
@@ -58,19 +58,73 @@ table(nchar(getSequences(seqtab)))
 ```{r}
 seqtab.nc<-removeBimeraDenovo(seqtab, method="consensus", multithread=TRUE,verbose=TRUE)
 dim(seqtab.nc)
-sum(seqtab.nc/seqtab)
+sum(seqtab.nc)/sum(seqtab)
 ```
 
 #Résumé du nombre de séquences éliminées par chaque étape.
+
 ```{r}
 getN<-function(x) sum(getUniques(x))
-Resume<-cbind(Seqsfilt, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(Fus, getN),rownums(seqtab.nc))
+Resume<-cbind(Seqsfilt, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(Fus, getN),rowSums(seqtab.nc))
 colnames(Resume)<-c("input","filtered","errlF","errlR","fusion","nochim")
 rownames(Resume)<-sample.names
 head(Resume)
 ```
 
+# Assignement de taxonomie
+
 ```{r}
-assignement de taxonomie
+taxo<-assignTaxonomy(seqtab.nc,"/home/rstudio/AnalyseArticle/silva_nr_v132_train_set.fa.gz", multithread=TRUE)
+printTaxo<-taxo
+rownames(printTaxo)<-NULL
+```
+
+# Création de la table d'OTU
+```{r}
+table.samples <- rownames(seqtab.nc)
+
+subject <- sapply(strsplit(table.samples, "_"), `[`, 1)
+subject <- substr(subject,1,83)
+sample <-sapply(data$Sample.Name, `[`,)
+sample <- sample[!sapply(sample, is.)]
+sample
+df.samples <- data.frame(NumSeq=subject, Echantillon=sample)
+
+rownames(df.samples) <- table.samples
+df.samples
+```
+
+
+```{r}
+ps<-phyloseq(otu_table(seqtab.nc, taxa_are_rows = FALSE),sample_data(df.samples), tax_table(taxo))
+ps
+```
+
+```{r}
+dna <- Biostrings::DNAStringSet(taxa_names(ps))
+names(dna) <- taxa_names(ps)
+ps <- merge_phyloseq(ps, dna)
+taxa_names(ps) <- paste0("ASV", seq(ntaxa(ps)))
+ps
+```
+
+```{r}
+ps.prop <- transform_sample_counts(ps, function(otu) otu/sum(otu))
+ord.nmds.bray <- ordinate(ps.prop, method="NMDS", distance="bray")
+```
+
+```{r}
+plot_ordination(ps.prop, ord.nmds.bray, color="Phylum1", title="Bray NMDS")
+```
+
+```{r}
+top20 <- names(sort(taxa_sums(ps), decreasing=TRUE))[1:20]
+ps.top20 <- transform_sample_counts(ps, function(OTU) OTU/sum(OTU))
+ps.top20 <- prune_taxa(top20, ps.top20)
+plot_bar(ps.top20, x="subject", fill="Class") + facet_wrap(~, scales="free_x")
+```
+
+```{r}
+boxplot
 ```
 
